@@ -156,7 +156,7 @@ jobs:
           echo "| Hạng mục | Thông tin chi tiết |" >> $GITHUB_STEP_SUMMARY
           echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
           echo "| **Môi trường** | \`${{ github.event.client_payload.environment || github.event.inputs.environment || 'staging' }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Báo cáo Allure** | 👉 **[XEM BÁO CÁO TẠI ĐÂY](https://hieuit1.github.io/playwright-test/)** |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Báo cáo Allure** | 👉 **[XEM BÁO CÁO TẠI ĐÂY](https://hieuit1.github.io/playwright-test/${{ github.run_number }}/)** |" >> $GITHUB_STEP_SUMMARY
           echo "> Lưu ý: Nếu click vào link mà vẫn hiện ra báo cáo cũ hoặc chưa hiện ra ngay, hãy đợi 1-2 phút để GitHub Pages cập nhật." >> $GITHUB_STEP_SUMMARY
 
       - name: Send Email with Allure Link
