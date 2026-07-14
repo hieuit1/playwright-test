@@ -1,10 +1,14 @@
 import { test as baseTest } from "@playwright/test";
+import { LoginPage } from "../pages/LoginPage";
 
 type CoreFixtures = {
-    // Nơi khai báo thêm các Page Object chung cho tương lai
+    loginPage: LoginPage;
 };
 
 export const test = baseTest.extend<CoreFixtures>({
+    loginPage: async ({ page }, use) => {
+        await use(new LoginPage(page));
+    },
     page: async ({ page }, use) => {
         // LỚP KHIÊN 1: Chặn tải các tài nguyên không mong muốn tại tầng Network
         await page.route("**/*", (route) => {
