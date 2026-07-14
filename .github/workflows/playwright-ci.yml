@@ -1,0 +1,189 @@
+name: Core Automation CI Pipeline
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  # schedule: 
+    # Tự động chạy Regression test lúc nửa đêm 
+    # - cron: "0 17 * * *"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Chọn môi trường kiểm thử"
+        required: true
+        default: "staging"
+        type: choice
+        options: [dev, qa, staging]
+      test_type:
+        description: "Chọn bộ Test"
+        required: true
+        default: "@smoke"
+        type: choice
+        options: ["@smoke", "@regression", "@e2e"]
+
+  # Mở cổng nhận tín hiệu từ các Repository khác
+  repository_dispatch:
+    types: [run-staging-tests, run-qa-tests]
+
+jobs:
+  execute-tests:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+
+    # BỔ SUNG DÒNG NÀY: Để GitHub biết chui vào Settings -> Environments lấy đúng BASE_URL
+    environment: ${{ github.event.client_payload.environment || github.event.inputs.environment || 'staging' }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2, 3]
+        shardTotal: [3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          
+      - name: Install System Dependencies
+        run: npm ci
+        
+      - name: Deploy Managed Custom Browsers
+        run: npx playwright install --with-deps
+
+      - name: Execute Parallel Shard Testing
+        env:
+          ENV: ${{ github.event.client_payload.environment || github.event.inputs.environment || 'staging' }}
+          BASE_URL: ${{ vars.BASE_URL }}
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "🔥 Chạy Smoke Test cho Pull Request..."
+            npx playwright test --grep "@smoke" --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+            
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "👨‍💻 Chạy thủ công bộ ${{ github.event.inputs.test_type }} trên môi trường $ENV..."
+            npx playwright test --grep "${{ github.event.inputs.test_type }}" --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+            
+          elif [ "${{ github.event_name }}" == "repository_dispatch" ]; then
+            echo "🚀 Nhận lệnh Deploy từ Dev. Chạy bộ Regression trên môi trường $ENV..."
+            npx playwright test --grep "@regression" --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+            
+          else
+            echo "🕒 Chạy tự động ban đêm (Schedule) bộ Regression..."
+            npx playwright test --grep "@regression" --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+          fi
+
+      - name: Preserve Allure Context Results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-chunk-${{ matrix.shardIndex }}
+          path: allure-results
+          retention-days: 1
+
+  compile-and-publish-report:
+    if: ${{ !cancelled() }}
+    needs: [execute-tests]
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.client_payload.environment || github.event.inputs.environment || 'staging' }}
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Ensure gh-pages branch exists
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git ls-remote --heads origin gh-pages | grep -q gh-pages; then
+            echo "Branch gh-pages does not exist. Creating it..."
+            git checkout --orphan gh-pages
+            git reset --hard
+            git commit --allow-empty -m "Initialize gh-pages branch"
+            git push origin gh-pages
+            git checkout -f ${{ github.ref_name }}
+          else
+            echo "Branch gh-pages already exists."
+          fi
+
+      - name: Merge Distributed Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: target/allure-results   # Đã đổi đường dẫn để khớp với Action sinh báo cáo bên dưới
+          pattern: allure-results-chunk-*
+          merge-multiple: true
+
+      - name: Get Allure history
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          ref: gh-pages
+          path: gh-pages-dir
+          fetch-depth: 0
+      
+      - name: Create environment.properties
+        run: |
+          mkdir -p target/allure-results
+          cat <<EOF > target/allure-results/environment.properties
+          BaseURL=${{ vars.BASE_URL }}
+          Environment=${{ github.event.client_payload.environment || github.event.inputs.environment || 'staging' }}
+          Browser=Chromium
+          Project=basecode-playwright-ts
+          EOF
+
+      - name: Generate Allure Report
+        uses: simple-elf/allure-report-action@master
+        with:
+          allure_results: target/allure-results
+          allure_history: allure-history
+          gh_pages: gh-pages-dir
+          keep_reports: 20
+
+      - name: Host Dashboard on GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: allure-history
+
+      - name: Publish Test Report Link
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "## 📊 KẾT QUẢ KIỂM THỬ TỰ ĐỘNG" >> $GITHUB_STEP_SUMMARY
+          echo "| Hạng mục | Thông tin chi tiết |" >> $GITHUB_STEP_SUMMARY
+          echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Môi trường** | \`${{ github.event.client_payload.environment || github.event.inputs.environment || 'staging' }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Báo cáo Allure** | 👉 **[XEM BÁO CÁO TẠI ĐÂY](https://hieuit1.github.io/basecode-playwright-ts/)** |" >> $GITHUB_STEP_SUMMARY
+          echo "> Lưu ý: Nếu click vào link mà vẫn hiện ra báo cáo cũ hoặc chưa hiện ra ngay, hãy đợi 1-2 phút để GitHub Pages cập nhật." >> $GITHUB_STEP_SUMMARY
+
+      - name: Send Email with Allure Link
+        if: always() 
+        uses: dawidd6/action-send-mail@v4
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "Kết quả Test Tự động - Môi trường ${{ github.event.client_payload.environment || github.event.inputs.environment || 'staging' }}"
+          body: |
+            Xin chào team,
+            
+            Hệ thống kiểm thử tự động Playwright vừa chạy xong.
+            
+            THÔNG TIN CHI TIẾT:
+            - Môi trường test: ${{ github.event.client_payload.environment || github.event.inputs.environment || 'staging' }}
+            - Trạng thái: Hoàn tất
+            
+            XEM BÁO CÁO TẠI ĐÂY (Allure Dashboard):
+            https://hieuit1.github.io/basecode-playwright-ts/
+            
+            Chi tiết tiến trình trên GitHub Actions:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            Trân trọng,
+            Hệ thống CI/CD Automation Bot
+          to: bentakeu@gmail.com
+          from: CI/CD Bot
