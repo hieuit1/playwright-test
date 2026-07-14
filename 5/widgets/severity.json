@@ -1,0 +1,1 @@
+[{"uid":"96dc6aaf471a87b0","name":"Should display error message on incorrect email or password","time":{"start":1784019402449,"stop":1784019418302,"duration":15853},"status":"failed","severity":"normal"},{"uid":"2136848b04fc260b","name":"Kịch bản Test @smoke @regression","time":{"start":1784019359633,"stop":1784019360607,"duration":974},"status":"passed","severity":"normal"}]
