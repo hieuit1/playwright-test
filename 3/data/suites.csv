@@ -1,0 +1,3 @@
+"DESCRIPTION","DURATION IN MS","NAME","PARENT SUITE","START TIME","STATUS","STOP TIME","SUB SUITE","SUITE","TEST CLASS","TEST METHOD"
+"","4431","Should display error message on incorrect email or password","","2026-07-14","passed","2026-07-14","Login Tests @regression","login.spec.ts","",""
+"","713","Kịch bản Test @smoke @regression","","2026-07-14","passed","2026-07-14","","example.spec.ts","",""
