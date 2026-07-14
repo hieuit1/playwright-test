@@ -1,0 +1,1 @@
+[{"uid":"d3e3d99d217d6e59","name":"Kịch bản Test @smoke @regression","time":{"start":1784019825745,"stop":1784019829840,"duration":4095},"status":"passed","severity":"normal"},{"uid":"11f9099c1bd1f397","name":"Should display error message on incorrect email or password","time":{"start":1784019910545,"stop":1784019926313,"duration":15768},"status":"failed","severity":"normal"}]
